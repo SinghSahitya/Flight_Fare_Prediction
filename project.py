@@ -5,6 +5,10 @@ import seaborn as sns
 import plotly.express as px
 from warnings import filterwarnings
 from sklearn.feature_selection import mutual_info_regression
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn import metrics
+import pickle
 
 filterwarnings('ignore')
 
@@ -129,4 +133,65 @@ Y= df['Price']
 imp = mutual_info_regression(X, Y)
 imp_df = pd.DataFrame(imp, index=X.columns)
 imp_df.columns = ['importance']
-print(imp_df)
+
+
+#building model
+
+X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25, random_state=42)
+ml_model = RandomForestRegressor()
+ml_model.fit(X_train, Y_train)
+
+def mape(y_true , y_pred):
+    y_true , y_pred = np.array(y_true) , np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
+def predict(ml_model): # automating prediction for other models
+    model = ml_model.fit(X_train , Y_train)
+    print('Training score : {}'.format(model.score(X_train , Y_train)))
+    y_predection = model.predict(X_test)
+    print('predictions are : {}'.format(y_predection))
+    print('\n')
+    r2_score = metrics.r2_score(Y_test , y_predection)
+    print('r2 score : {}'.format(r2_score))
+    print('MAE : {}'.format(metrics.mean_absolute_error(Y_test , y_predection)))
+    print('MSE : {}'.format(metrics.mean_squared_error(Y_test , y_predection)))
+    print('RMSE : {}'.format(np.sqrt(metrics.mean_squared_error(Y_test , y_predection))))
+    print('MAPE : {}'.format(mape(Y_test , y_predection)))
+    
+
+with open('rf_random.pickle', 'wb') as file:
+    pickle.dump(ml_model, file)
+
+with open('rf_random.pickle', 'rb') as model:
+    forest = pickle.load(model)
+    Y_pred = forest.predict(X_test)
+    print('Accuracy Score: ',metrics.r2_score(Y_test, Y_pred)) 
+    print('Percentage Error: ',mape(Y_test , Y_pred))
+
+# Hypertuning for better score
+# Number of trees in random forest
+n_estimators = [int(x) for x in np.linspace(start =100 , stop=1200 , num=6)]
+
+# Number of features to consider at every split
+max_features = ["auto", "sqrt"]
+
+# Maximum number of levels in tree
+max_depth = [int(x) for x in np.linspace(start =5 , stop=30 , num=4)]
+
+# Minimum number of samples required to split a node
+min_samples_split = [5,10,15,100]
+
+random_grid = {
+    'n_estimators' : n_estimators , 
+    'max_features' : max_features , 
+    'max_depth' : max_depth , 
+    'min_samples_split' : min_samples_split
+}
+
+rf_random = RandomizedSearchCV(estimator=ml_model , param_distributions=random_grid , cv=3 , n_jobs=-1 , verbose=2)
+rf_random.fit(X_train , Y_train)
+
+print('Best Params: ',rf_random.best_params_)
+print('Best Estimators: ',rf_random.best_estimator_)
+print('Best Score: ',rf_random.best_score_)
+
